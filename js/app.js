@@ -11,6 +11,16 @@ const Site = (() => {
         <div class="collapse navbar-collapse" id="navMenu">
           <ul class="navbar-nav ms-auto align-items-lg-center">
             <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="worksheets.html" id="subject-menu" role="button" data-bs-toggle="dropdown" aria-expanded="false">Subject</a>
+              <ul class="dropdown-menu" aria-labelledby="subject-menu">
+                <li><a class="dropdown-item" href="maths.html">Maths</a></li>
+                <li><a class="dropdown-item" href="english.html">English</a></li>
+                <li><a class="dropdown-item" href="evs.html">EVS</a></li>
+                <li><a class="dropdown-item" href="science.html">Science</a></li>
+                <li><a class="dropdown-item" href="hindi.html">Hindi</a></li>
+              </ul>
+            </li>
             <li class="nav-item"><a class="nav-link" href="worksheets.html">Worksheets</a></li>
             <li class="nav-item"><a class="nav-link" href="plan.html">Plan</a></li>
             <li class="nav-item"><a class="nav-link" href="about.html">About</a></li>
@@ -50,9 +60,9 @@ const Site = (() => {
       </div>
     </div>`;
   const categories = [
-    ["Math", "bi-calculator", "#fff5c8"],
-    ["English", "bi-book", "#e5f7ee"],
-    ["Science", "bi-lightbulb", "#e9f6ff"],
+    ["Math", "bi-calculator", "#fff5c8", "maths.html"],
+    ["English", "bi-book", "#e5f7ee", "english.html"],
+    ["Science", "bi-lightbulb", "#e9f6ff", "science.html"],
     ["Art", "bi-palette", "#fff0e7"],
     ["General Knowledge", "bi-globe", "#f2efff"],
   ];
@@ -81,8 +91,8 @@ const Site = (() => {
 
     const categoryGrid = document.getElementById("category-grid");
     if (categoryGrid) {
-      categoryGrid.innerHTML = categories.map(([name, icon, color]) => `
-        <a class="category-card" href="worksheets.html?subject=${encodeURIComponent(name)}" style="--card-color:${color}">
+      categoryGrid.innerHTML = categories.map(([name, icon, color, href]) => `
+        <a class="category-card" href="${href || `worksheets.html?subject=${encodeURIComponent(name)}`}" style="--card-color:${color}">
           <span class="category-icon"><i class="bi ${icon}"></i></span>
           <h3>${name}</h3>
         </a>

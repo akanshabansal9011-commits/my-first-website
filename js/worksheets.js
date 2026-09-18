@@ -1,9 +1,8 @@
-/* Server-driven worksheet catalogue; legacy JSON remains only as a migration fallback. */
+/* Server-driven worksheet catalogue. */
 const WorksheetData = (() => {
   const apiUrl = window.WorksheetConfig?.apiUrl?.replace(/\/$/, "") || "";
-  const legacy = async () => (await fetch("data/worksheets.json")).json();
   const request = async params => {
-    if (!apiUrl) return null;
+    if (!apiUrl) throw new Error("Worksheet API is not configured");
     const url = new URL(apiUrl);
     Object.entries(params).forEach(([key, value]) => {
       if (value) url.searchParams.set(key, value);
@@ -12,7 +11,7 @@ const WorksheetData = (() => {
     if (!response.ok) throw new Error(`Worksheet API returned ${response.status}`);
     return response.json();
   };
-  return { apiUrl, legacy, request };
+  return { request };
 })();
 
 const WorksheetUI = (() => {
@@ -25,7 +24,7 @@ const WorksheetUI = (() => {
     "'": "&#39;",
   })[char]);
   const favorites = () => JSON.parse(localStorage.getItem("aaw-favorites") || "[]");
-  const state = { page: 1, className: "", subject: "", level: "", sort: "newest", legacyData: [] };
+  const state = { page: 1, className: "", subject: "", level: "", sort: "newest" };
 
   function pdfUrl(w) {
     if (w.pdfUrl || w.downloadUrl) return w.pdfUrl || w.downloadUrl;
@@ -74,7 +73,7 @@ const WorksheetUI = (() => {
     const query = new URLSearchParams(location.search);
     state.page = Math.max(1, Number(query.get("page")) || 1);
     state.className = query.get("class") || "";
-    state.subject = query.get("subject") || "";
+    state.subject = query.get("subject") || document.body.dataset.subject || "";
     state.level = query.get("level") || "";
     state.sort = query.get("sort") === "alphabetical" ? "alphabetical" : "newest";
   }
@@ -90,38 +89,49 @@ const WorksheetUI = (() => {
 
   function addOptions(select, values) {
     if (!select) return;
+    const optionKey = value => select.id === "class-filter" ? comparableClass(value) : String(value);
+    const seen = new Set([...select.options].map(option => optionKey(option.value)));
     values.filter(Boolean).sort((a, b) => a.localeCompare(b)).forEach(value => {
-      select.insertAdjacentHTML("beforeend", `<option value="${esc(value)}">${esc(value)}</option>`);
+      const key = optionKey(value);
+      if (seen.has(key)) return;
+      seen.add(key);
+      const label = filterLabel(select, value);
+      select.insertAdjacentHTML("beforeend", `<option value="${esc(value)}">${esc(label)}</option>`);
     });
+  }
+
+  function filterLabel(select, value) {
+    if (select.id === "class-filter") return value.replace(/^Grade\s*(\d+)$/i, "Class $1");
+    if (select.id === "subject-filter" && value === "Math") return "Maths";
+    return value;
+  }
+
+  function syncFilterControl(select, value) {
+    if (!select) return;
+    select.value = [...select.options].some(option => option.value === value) ? value : "";
+  }
+
+  function comparableClass(value) {
+    const normalized = String(value || "").trim().toLocaleLowerCase().replace(/\s+/g, "");
+    const classNumber = normalized.match(/^(class|grade)(\d+)$/)?.[2];
+    return classNumber ? `class-${classNumber}` : normalized;
+  }
+
+  function resolveClassFilterValue(value) {
+    const classFilter = document.getElementById("class-filter");
+    if (!value || !classFilter) return value;
+    const comparableValue = comparableClass(value);
+    return [...classFilter.options].find(option => comparableClass(option.value) === comparableValue)?.value || value;
   }
 
   async function fillOptions() {
     const classFilter = document.getElementById("class-filter");
     const subjectFilter = document.getElementById("subject-filter");
     const levelFilter = document.getElementById("level-filter");
-    if (WorksheetData.apiUrl) {
-      const facets = await WorksheetData.request({ facets: "true" });
-      addOptions(classFilter, facets.classes || []);
-      addOptions(subjectFilter, facets.subjects || []);
-      addOptions(levelFilter, facets.levels || []);
-      return;
-    }
-    addOptions(classFilter, [...new Set(state.legacyData.map(w => w.className || w.class))]);
-    addOptions(subjectFilter, [...new Set(state.legacyData.map(w => w.subject))]);
-    addOptions(levelFilter, [...new Set(state.legacyData.map(w => w.level || w.difficulty))]);
-  }
-
-  function legacyResult() {
-    const rows = state.legacyData.filter(w =>
-      (!state.className || (w.className || w.class) === state.className) &&
-      (!state.subject || w.subject === state.subject) &&
-      (!state.level || (w.level || w.difficulty) === state.level)
-    ).sort((a, b) => state.sort === "alphabetical"
-      ? a.title.localeCompare(b.title)
-      : new Date(b.publishedDate || b.dateAdded) - new Date(a.publishedDate || a.dateAdded));
-    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    state.page = Math.min(state.page, totalPages);
-    return { worksheets: rows.slice((state.page - 1) * PAGE_SIZE, state.page * PAGE_SIZE), pagination: { page: state.page, pageSize: PAGE_SIZE, total: rows.length, totalPages } };
+    const facets = await WorksheetData.request({ facets: "true" });
+    addOptions(classFilter, facets.classes || []);
+    addOptions(subjectFilter, facets.subjects || []);
+    addOptions(levelFilter, facets.levels || []);
   }
 
   function pageSet(current, total) {
@@ -164,9 +174,7 @@ const WorksheetUI = (() => {
     const grid = document.getElementById("worksheets-grid");
     grid.innerHTML = '<div class="loading"><div class="spinner-border" role="status"></div><span>Loading worksheets...</span></div>';
     try {
-      const result = WorksheetData.apiUrl
-        ? await WorksheetData.request({ page: state.page, pageSize: PAGE_SIZE, class: state.className, subject: state.subject, level: state.level, sort: state.sort })
-        : legacyResult();
+      const result = await WorksheetData.request({ page: state.page, pageSize: PAGE_SIZE, class: state.className, subject: state.subject, level: state.level, sort: state.sort });
       render(result);
     } catch (error) {
       console.error(error);
@@ -182,36 +190,43 @@ const WorksheetUI = (() => {
 
   async function catalogue() {
     if (!document.getElementById("worksheets-grid")) return;
-    if (!WorksheetData.apiUrl) state.legacyData = await WorksheetData.legacy();
     await fillOptions();
     readUrl();
+    state.className = resolveClassFilterValue(state.className);
+    writeUrl();
     [["class-filter", "className"], ["subject-filter", "subject"], ["level-filter", "level"], ["sort", "sort"]].forEach(([id, key]) => {
       const element = document.getElementById(id);
-      element.value = state[key];
+      if (!element) return;
+      syncFilterControl(element, state[key]);
       element.addEventListener("change", event => {
         state[key] = event.target.value;
         state.page = 1;
         load();
       });
     });
-    document.getElementById("clear-filters").onclick = () => {
+    const clearFilters = document.getElementById("clear-filters");
+    if (clearFilters) clearFilters.onclick = () => {
       state.className = "";
       state.subject = "";
       state.level = "";
       state.page = 1;
-      ["class-filter", "subject-filter", "level-filter"].forEach(id => document.getElementById(id).value = "");
+      ["class-filter", "subject-filter", "level-filter"].forEach(id => {
+        const filter = document.getElementById(id);
+        if (filter) filter.value = "";
+      });
       load();
     };
     await load();
+    [["class-filter", "className"], ["subject-filter", "subject"], ["level-filter", "level"], ["sort", "sort"]].forEach(([id, key]) => {
+      syncFilterControl(document.getElementById(id), state[key]);
+    });
   }
 
   async function home() {
     const box = document.getElementById("featured-grid");
     if (!box) return;
     try {
-      const rows = WorksheetData.apiUrl
-        ? (await WorksheetData.request({ page: 1, pageSize: 3, sort: "newest", featured: "true" })).worksheets
-        : (await WorksheetData.legacy()).filter(w => w.featured).slice(0, 3);
+      const rows = (await WorksheetData.request({ page: 1, pageSize: 3, sort: "newest", featured: "true" })).worksheets;
       box.innerHTML = rows.map(card).join("");
       bindCards();
     } catch (error) {

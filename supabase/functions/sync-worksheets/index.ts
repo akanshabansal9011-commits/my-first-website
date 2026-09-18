@@ -9,6 +9,11 @@ const client = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABAS
 const titleCase = (value: string) => value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
 const normalizeStatus = (value: string) => titleCase(value.trim());
 const normalizeLevel = (value: string) => titleCase(value.trim());
+const normalizeClass = (value: string) => {
+  const compact = value.trim().toLowerCase().replace(/\s+/g, "");
+  const match = compact.match(/^(class|grade)(\d+)$/);
+  return match ? `Class ${Number(match[2])}` : value.trim();
+};
 const normalizeFeatured = (value: string) => {
   const normalized = value.trim().toLowerCase();
   if (["true", "yes", "y", "1"].includes(normalized)) return true;
@@ -71,7 +76,7 @@ Deno.serve(async request => {
     const rows = values.filter((row: unknown[]) => row.some(value => String(value).trim())).map((row: unknown[]) => toRow(headers, row));
     const incomingIds = new Set<string>();
     const valid = [];
-    rows.forEach((row, index) => { if (row.ID) incomingIds.add(row.ID); const rowErrors = validate(row); if (rowErrors.length) errors.push({ row: index + 2, id: row.ID, errors: rowErrors }); else valid.push({ id: row.ID, title: row.Title, subject: row.Subject, class_name: row.Class, level: normalizeLevel(row.Level), topic: row.Topic || null, description: row.Description || null, pdf_url: row["PDF URL"], thumbnail_url: row["Thumbnail URL"] || null, published_date: new Date(row["Published Date"]).toISOString().slice(0, 10), status: normalizeStatus(row.Status), featured: normalizeFeatured(row.Featured) === true, tags: row.Tags ? row.Tags.split(",").map(tag => tag.trim()).filter(Boolean) : [], source: "google-sheets", source_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() }); });
+    rows.forEach((row, index) => { if (row.ID) incomingIds.add(row.ID); const rowErrors = validate(row); if (rowErrors.length) errors.push({ row: index + 2, id: row.ID, errors: rowErrors }); else valid.push({ id: row.ID, title: row.Title, subject: row.Subject, class_name: normalizeClass(row.Class), level: normalizeLevel(row.Level), topic: row.Topic || null, description: row.Description || null, pdf_url: row["PDF URL"], thumbnail_url: row["Thumbnail URL"] || null, published_date: new Date(row["Published Date"]).toISOString().slice(0, 10), status: normalizeStatus(row.Status), featured: normalizeFeatured(row.Featured) === true, tags: row.Tags ? row.Tags.split(",").map(tag => tag.trim()).filter(Boolean) : [], source: "google-sheets", source_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() }); });
     if (valid.length) { const { error } = await client.from("worksheets").upsert(valid, { onConflict: "id" }); if (error) throw error; }
     const { data: existing } = await client.from("worksheets").select("id").eq("source", "google-sheets").neq("status", "Archived");
     const removedIds = (existing || []).map(row => row.id).filter(id => !incomingIds.has(id));

@@ -71,18 +71,8 @@ supabase secrets set GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}
 6. Set `apiUrl` in `js/config.js` to `https://YOUR_PROJECT_REF.supabase.co/functions/v1/worksheets`.
 7. Deploy the static website normally. The UI requests only nine matching records per page.
 
-## Migrating the existing catalogue
-
-Run the migration helper to create CSV rows from the old JSON, then paste it into the Sheet:
-
-```powershell
-node scripts/export-legacy-worksheets.mjs > worksheets-migration.csv
-```
-
-Replace placeholder Drive IDs with real PDF URLs before the first sync. Verify the 20 imported records in Supabase, test their PDF URLs and thumbnails, then set `js/config.js` to the API URL.
-
 ## API
 
-`GET /functions/v1/worksheets?page=1&pageSize=9&class=Grade%201&subject=Math&level=Easy&sort=newest`
+`GET /functions/v1/worksheets?page=1&pageSize=9&class=Class%201&subject=Math&level=Easy&sort=newest`
 
 The API accepts only Class, Subject, and Level filters. It supports `newest` and `alphabetical` sorting, does database-side filtering/pagination, and caches successful listing responses for five minutes at shared caches.
